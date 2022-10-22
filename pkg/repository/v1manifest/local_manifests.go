@@ -537,7 +537,7 @@ func (ms *MockManifests) ComponentInstalledPath(component string, version utils.
 func (ms *MockManifests) InstalledComponents() ([]string, error) {
 	installed := []string{}
 
-	for c, _ := range ms.Installed {
+	for c := range ms.Installed {
 		installed = append(installed, c)
 	}
 
@@ -548,7 +548,7 @@ func (ms *MockManifests) InstalledComponents() ([]string, error) {
 func (ms *MockManifests) InstalledComponentsWithMirror() ([]string, error) {
 	installed := []string{}
 
-	for c, _ := range ms.Installed {
+	for c := range ms.Installed {
 		c = fmt.Sprintf("%s/%s", "mock", c)
 		installed = append(installed, c)
 	}

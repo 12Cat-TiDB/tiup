@@ -37,6 +37,11 @@ func NewTiUPClient(tiupHome string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if config.Aliases == nil {
+		config.Aliases = make(map[string]string)
+	}
+
 	c := &Client{
 		tiupHome:     tiupHome,
 		config:       config,
@@ -87,7 +92,7 @@ func (c *Client) AddMirror(mirror localdata.SingleMirror, rootJSON io.Reader) er
 func (c *Client) DownloadComponents(specs []string, nightly, force bool) error {
 	mirrorSpecs := map[string][]repository.ComponentSpec{}
 	for _, spec := range specs {
-		mirror, component, version, err := ParseComponentVersion(spec)
+		mirror, component, version, err := c.ParseComponentVersion(spec)
 		if err != nil {
 			return err
 		}
@@ -100,7 +105,10 @@ func (c *Client) DownloadComponents(specs []string, nightly, force bool) error {
 	// download
 	var errs []string
 	for mirror, specs := range mirrorSpecs {
-		repo := c.GetRepository(mirror)
+		repo, err := c.GetRepository(mirror)
+		if err != nil {
+			errs = append(errs, err.Error())
+		}
 		if err := repo.UpdateComponents(specs); err != nil {
 			errs = append(errs, err.Error())
 		}
@@ -118,7 +126,7 @@ func (c *Client) Remove(name, version string) error {
 }
 
 func (c *Client) Install(s string) error {
-	mirror, component, version, err := ParseComponentVersion(s)
+	mirror, component, version, err := c.ParseComponentVersion(s)
 	if err != nil {
 		return err
 	}
@@ -134,6 +142,7 @@ func (c *Client) Install(s string) error {
 	for _, v1repo := range c.repositories {
 		err = v1repo.UpdateComponents(v1specs)
 		if err == nil {
+			c.tryAddAlias(component, fmt.Sprintf("%s/%s", v1repo.Local().Name(), component))
 			return nil
 		}
 	}
@@ -141,14 +150,17 @@ func (c *Client) Install(s string) error {
 }
 
 func (c *Client) Uninstall(s string) error {
-	mirror, component, version, err := ParseComponentVersion(s)
+	mirror, component, version, err := c.ParseComponentVersion(s)
 	if err != nil {
 		return err
 	}
 
 	paths := []string{}
 
-	repo := c.GetRepository(mirror)
+	repo, err := c.GetRepository(mirror)
+	if err != nil {
+		return err
+	}
 
 	dir, err := os.ReadDir(repo.Local().ProfilePath(localdata.ComponentParentDir, mirror, component))
 	if err != nil {
@@ -180,8 +192,11 @@ func (c *Client) SaveConfig() error {
 	return c.config.Flush()
 }
 
-func (c *Client) addAlias(k, v string) error {
-	return nil
+func (c *Client) tryAddAlias(component, mirrorComp string) {
+	_, exist := c.config.Aliases[component]
+	if !exist {
+		c.config.Aliases[component] = mirrorComp
+	}
 }
 
 func (c *Client) initRepository(name, url string) (*repository.V1Repository, error) {
@@ -211,7 +226,13 @@ func (c *Client) initRepository(name, url string) (*repository.V1Repository, err
 	return v1repo, nil
 }
 
-func ParseComponentVersion(s string) (mirror, component, tag string, err error) {
+func (c *Client) ParseComponentVersion(s string) (mirror, component, tag string, err error) {
+
+	// get mrror/component from alias
+	if _, ok := c.config.Aliases[s]; ok {
+		s = c.config.Aliases[s]
+	}
+
 	splited := strings.Split(s, ":")
 	switch len(splited) {
 	case 1:
@@ -245,21 +266,30 @@ func (c *Client) Repositories() map[string]*repository.V1Repository {
 }
 
 // Repositories return all repo
-func (c *Client) GetRepository(mirror string) *repository.V1Repository {
-	return c.repositories[mirror]
+func (c *Client) GetRepository(mirror string) (*repository.V1Repository, error) {
+	repo, ok := c.repositories[mirror]
+	if !ok {
+		return nil, errors.Errorf("morror [%s] not found", mirror)
+	}
+
+	return repo, nil
 }
 
 // SelfUpdate updates TiUP.
 func (c *Client) SelfUpdate() error {
 	// get default mirror
-	mirror, _, _, err := ParseComponentVersion(repository.TiUPBinaryName)
+	mirror, _, _, err := c.ParseComponentVersion(repository.TiUPBinaryName)
 	if err != nil {
 		return err
 	}
 
-	repo := c.GetRepository(mirror)
+	repo, err := c.GetRepository(mirror)
+	if err != nil {
+		return err
+	}
 
-	if err := repo.DownloadTiUP(repo.Local().ProfilePath("bin")); err != nil {
+	err = repo.DownloadTiUP(repo.Local().ProfilePath("bin"))
+	if err != nil {
 		return err
 	}
 
