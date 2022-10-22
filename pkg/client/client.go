@@ -107,7 +107,7 @@ func (c *Client) DownloadComponents(specs []string, nightly, force bool) error {
 	for mirror, specs := range mirrorSpecs {
 		repo, err := c.GetRepository(mirror)
 		if err != nil {
-			errs = append(errs, err.Error())
+			return err
 		}
 		if err := repo.UpdateComponents(specs); err != nil {
 			errs = append(errs, err.Error())
