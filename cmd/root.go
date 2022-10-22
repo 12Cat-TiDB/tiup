@@ -104,11 +104,11 @@ the latest stable version will be downloaded from the repository.`,
 					return err
 				}
 				environment.SetGlobalEnv(e)
-
-				tiupC, err = client.NewTiUPClient(os.Getenv(localdata.EnvNameHome))
-				if err != nil {
-					return err
-				}
+			}
+			var err error
+			tiupC, err = client.NewTiUPClient(os.Getenv(localdata.EnvNameHome))
+			if err != nil {
+				return err
 			}
 			return nil
 		},

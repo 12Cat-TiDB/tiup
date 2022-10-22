@@ -216,7 +216,6 @@ The root manifest in $TIUP_HOME will be replaced with the one in given repositor
 			if !reset && len(args) != 1 {
 				return cmd.Help()
 			}
-
 			var addr string
 			if reset {
 				addr = repository.DefaultMirror
