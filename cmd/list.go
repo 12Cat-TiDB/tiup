@@ -124,7 +124,8 @@ func showComponentList(opt listOptions) (*listResult, error) {
 
 			c, err := showMirrorComponentList(name, tiupC.GetRepositorie(name), opt)
 			if err != nil {
-				return nil, err
+				log.Warnf("get component list from mirror %s failed", name)
+				continue
 			}
 			components = append(components, c...)
 		}
@@ -248,7 +249,8 @@ func showComponentVersions(component string, opt listOptions) (*listResult, erro
 
 			c, err := showMirrorComponentVersions(name, tiupC.GetRepositorie(name), component, opt)
 			if err != nil {
-				return nil, err
+				log.Debugf("Not found %s in mirror %s", component, name)
+				continue
 			}
 			components = append(components, c...)
 		}
