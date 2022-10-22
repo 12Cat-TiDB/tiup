@@ -104,11 +104,11 @@ the latest stable version will be downloaded from the repository.`,
 					return err
 				}
 				environment.SetGlobalEnv(e)
-			}
-			var err error
-			tiupC, err = client.NewTiUPClient(os.Getenv(localdata.EnvNameHome))
-			if err != nil {
-				return err
+
+				tiupC, err = client.NewTiUPClient(os.Getenv(localdata.EnvNameHome))
+				if err != nil {
+					return err
+				}
 			}
 			return nil
 		},
@@ -183,6 +183,9 @@ the latest stable version will be downloaded from the repository.`,
 		},
 		SilenceUsage: true,
 		PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
+			if tiupC == nil {
+				return nil
+			}
 			return tiupC.SaveConfig()
 		},
 		// implement auto completion for tiup components
