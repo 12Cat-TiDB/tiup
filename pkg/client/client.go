@@ -135,6 +135,7 @@ func (c *Client) Install(s string) error {
 
 	if mirror != "" {
 		if v1repo, ok := c.repositories[mirror]; ok {
+			c.tryAddAlias(component, fmt.Sprintf("%s/%s", v1repo.Local().Name(), component))
 			return v1repo.UpdateComponents(v1specs)
 		}
 	}
