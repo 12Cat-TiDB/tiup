@@ -3,11 +3,13 @@ package client
 import (
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/fatih/color"
 	"github.com/pingcap/errors"
 	"github.com/pingcap/tiup/pkg/localdata"
 	"github.com/pingcap/tiup/pkg/repository"
@@ -17,7 +19,7 @@ import (
 )
 
 type Client struct {
-	tiupHome string
+	TiupHome string
 	config   *localdata.TiUPConfig
 	// repo represents the components repository of TiUP, it can be a
 	// local file system or a HTTP URL
@@ -38,7 +40,7 @@ func NewTiUPClient(tiupHome string) (*Client, error) {
 		return nil, err
 	}
 	c := &Client{
-		tiupHome:     tiupHome,
+		TiupHome:     tiupHome,
 		config:       config,
 		repositories: make(map[string]*repository.V1Repository),
 	}
@@ -68,8 +70,8 @@ func (c *Client) AddMirror(mirror localdata.SingleMirror, rootJSON io.Reader) er
 	// todo: add check
 	c.config.Mirrors = append(c.config.Mirrors, mirror)
 
-	os.MkdirAll(filepath.Join(c.tiupHome, localdata.TrustedDir, mirror.Name), 0755)
-	f, err := os.OpenFile(filepath.Join(c.tiupHome, localdata.TrustedDir, mirror.Name, "root.json"), os.O_WRONLY|os.O_CREATE, 0755)
+	os.MkdirAll(filepath.Join(c.TiupHome, localdata.TrustedDir, mirror.Name), 0755)
+	f, err := os.OpenFile(filepath.Join(c.TiupHome, localdata.TrustedDir, mirror.Name, "root.json"), os.O_WRONLY|os.O_CREATE, 0755)
 	if err != nil {
 		return err
 	}
@@ -103,6 +105,32 @@ func (c *Client) Install(s string) error {
 	if mirror != "" {
 		if v1repo, ok := c.repositories[mirror]; ok {
 			return v1repo.UpdateComponents(v1specs)
+		} else {
+			// automatically fetch root.json and add mirror
+			mirrorURL := "https://" + mirror
+			rootJSONPath := mirrorURL + "/root.json"
+			fmt.Println(color.YellowString("WARN: adding root certificate via internet: %s", rootJSONPath))
+			resp, err := http.Get(rootJSONPath)
+			if err != nil {
+				return err
+			}
+			defer resp.Body.Close()
+
+			err = c.AddMirror(localdata.SingleMirror{Name: mirror}, resp.Body)
+			if err != nil {
+				return err
+			}
+			v1repo = c.repositories[mirror]
+
+			return v1repo.UpdateComponents(v1specs)
+		}
+	}
+
+	if mirror = c.ReadAlias(component); mirror != "" {
+		if v1repo, ok := c.repositories[mirror]; ok {
+			return v1repo.UpdateComponents(v1specs)
+		} else {
+			return fmt.Errorf("todo?error or try to get root.json")
 		}
 	}
 
@@ -155,13 +183,15 @@ func (c *Client) SaveConfig() error {
 	return c.config.Flush()
 }
 
-func (c *Client) addAlias(k, v string) error {
-	return nil
+func (c *Client) ReadAlias(component string) string {
+	mirrorAndComp := c.config.Aliases[component]
+	mirror, _, _, _ := ParseComponentVersion(mirrorAndComp)
+	return mirror
 }
 
 func (c *Client) initRepository(name, url string) (*repository.V1Repository, error) {
 	initRepo := time.Now()
-	profile := localdata.NewProfile(c.tiupHome, name, c.config)
+	profile := localdata.NewProfile(c.TiupHome, name, c.config)
 
 	// Initialize the repository
 	// Replace the mirror if some sub-commands use different mirror address

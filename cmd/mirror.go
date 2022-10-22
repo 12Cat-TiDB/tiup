@@ -272,8 +272,9 @@ func newMirrorAddCmd() *cobra.Command {
 					return err
 				}
 			} else {
-				fmt.Println(color.YellowString("WARN: adding root certificate via internet: %s", root))
-				resp, err := http.Get(singleMirror.GetURL() + "/root.json")
+				rootJSONPath := singleMirror.GetURL() + "/root.json"
+				fmt.Println(color.YellowString("WARN: adding root certificate via internet: %s", rootJSONPath))
+				resp, err := http.Get(rootJSONPath)
 				if err != nil {
 					return err
 				}

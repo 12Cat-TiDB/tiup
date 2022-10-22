@@ -126,3 +126,16 @@ func GetMeta(env *environment.Environment) (meta *Meta, fname string, err error)
 	meta, err = LoadFrom(fname)
 	return
 }
+
+// GetMeta read the telemeta from disk
+func GetMeta2(tiupHome string) (meta *Meta, fname string, err error) {
+	dir := filepath.Join(tiupHome, localdata.TelemetryDir)
+	err = os.MkdirAll(dir, 0755)
+	if err != nil {
+		return
+	}
+
+	fname = filepath.Join(dir, telemetryFname)
+	meta, err = LoadFrom(fname)
+	return
+}
