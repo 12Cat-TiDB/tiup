@@ -33,6 +33,7 @@ type listOptions struct {
 	installedOnly bool
 	verbose       bool
 	showAll       bool
+	mirrorName    string
 }
 
 func newListCmd() *cobra.Command {
@@ -71,6 +72,7 @@ components or versions which have not been installed.
 	}
 
 	cmd.Flags().BoolVar(&opt.installedOnly, "installed", false, "List installed components only.")
+	cmd.Flags().StringVar(&opt.mirrorName, "mirror", "", "Specify the components that display a mirror.")
 	cmd.Flags().BoolVar(&opt.verbose, "verbose", false, "Show detailed component information.")
 	cmd.Flags().BoolVar(&opt.showAll, "all", false, "Show all components include hidden ones.")
 
@@ -105,9 +107,9 @@ func showComponentList(env *environment.Environment, opt listOptions) (*listResu
 
 	var cmpTable [][]string
 	if opt.verbose {
-		cmpTable = append(cmpTable, []string{"Name", "Owner", "Installed", "Platforms", "Description"})
+		cmpTable = append(cmpTable, []string{"Mirror", "Name", "Owner", "Installed", "Platforms", "Description"})
 	} else {
-		cmpTable = append(cmpTable, []string{"Name", "Owner", "Description"})
+		cmpTable = append(cmpTable, []string{"Mirror", "Name", "Owner", "Description"})
 	}
 
 	index := v1manifest.Index{}
