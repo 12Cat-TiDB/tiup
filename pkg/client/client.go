@@ -84,7 +84,32 @@ func (c *Client) AddMirror(mirror localdata.SingleMirror, rootJSON io.Reader) er
 	return nil
 }
 
-func (c *Client) Download(name, version string) error {
+func (c *Client) DownloadComponents(specs []string, nightly, force bool) error {
+	mirrorSpecs := map[string][]repository.ComponentSpec{}
+	for _, spec := range specs {
+		mirror, component, version, err := ParseComponentVersion(spec)
+		if err != nil {
+			return err
+		}
+		if version == "" && nightly {
+			version = utils.NightlyVersionAlias
+		}
+		mirrorSpecs[mirror] = append(mirrorSpecs[mirror], repository.ComponentSpec{ID: component, Version: version, Force: force})
+	}
+
+	// download
+	var errs []string
+	for mirror, specs := range mirrorSpecs {
+		repo := c.GetRepository(mirror)
+		if err := repo.UpdateComponents(specs); err != nil {
+			errs = append(errs, err.Error())
+		}
+	}
+
+	if len(errs) > 0 {
+		return errors.New(strings.Join(append([]string{"update falied"}, errs...), "\n"))
+	}
+
 	return nil
 }
 
@@ -112,7 +137,7 @@ func (c *Client) Install(s string) error {
 			return nil
 		}
 	}
-	return fmt.Errorf("cannot found %s", s)
+	return fmt.Errorf("Component %s not found in all mirrors", s)
 }
 
 func (c *Client) Uninstall(s string) error {
@@ -222,4 +247,26 @@ func (c *Client) Repositories() map[string]*repository.V1Repository {
 // Repositories return all repo
 func (c *Client) GetRepository(mirror string) *repository.V1Repository {
 	return c.repositories[mirror]
+}
+
+// SelfUpdate updates TiUP.
+func (c *Client) SelfUpdate() error {
+	// get default mirror
+	mirror, _, _, err := ParseComponentVersion(repository.TiUPBinaryName)
+	if err != nil {
+		return err
+	}
+
+	repo := c.GetRepository(mirror)
+
+	if err := repo.DownloadTiUP(repo.Local().ProfilePath("bin")); err != nil {
+		return err
+	}
+
+	url, err := c.config.GetMirrorAddress(mirror)
+	if err != nil {
+		return err
+	}
+
+	return repo.Local().ResetMirror(url, "")
 }
