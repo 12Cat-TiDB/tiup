@@ -187,7 +187,7 @@ func newMirrorListCmd() *cobra.Command {
 				r.cmpTable = append(r.cmpTable, []string{
 					fmt.Sprintf("%d", i+1),
 					m.Name,
-					m.URL,
+					m.GetURL(),
 				})
 			}
 
