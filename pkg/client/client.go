@@ -70,6 +70,10 @@ func (c *Client) ListMirrors() []localdata.SingleMirror {
 
 // AddMirror add a new tiup morror
 func (c *Client) AddMirror(mirror localdata.SingleMirror, rootJSON io.Reader) error {
+	if _, ok := c.repositories[mirror.Name]; ok {
+		return errors.Errorf("mirror %s already exists", mirror.Name)
+	}
+
 	// todo: add check
 	c.config.Mirrors = append(c.config.Mirrors, mirror)
 
