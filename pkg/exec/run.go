@@ -80,11 +80,12 @@ func RunComponent(tiupC *client.Client, env *environment.Environment, tag, spec,
 		if tag == "" {
 			tag = utils.Base62Tag()
 		}
-		instanceDir = env.LocalPath(localdata.DataParentDir, tag)
+		instanceDir = filepath.Join(tiupC.TiUPHomePath(), localdata.DataParentDir, tag)
 	}
 	defer cleanDataDir(clean, instanceDir)
 
 	params := &PrepareCommandParams{
+		TiupHome:    tiupC.TiUPHomePath(),
 		Component:   component,
 		Version:     version,
 		BinPath:     binPath,
@@ -132,6 +133,7 @@ func cleanDataDir(rm bool, dir string) {
 
 // PrepareCommandParams for PrepareCommand.
 type PrepareCommandParams struct {
+	TiupHome    string
 	Component   string
 	Version     utils.Version
 	BinPath     string
@@ -143,8 +145,6 @@ type PrepareCommandParams struct {
 
 // PrepareCommand will download necessary component and returns a *exec.Cmd
 func PrepareCommand(p *PrepareCommandParams) (*exec.Cmd, error) {
-	env := p.Env
-	profile := env.Profile()
 	binPath := p.BinPath
 	installPath := filepath.Dir(binPath)
 
@@ -152,12 +152,12 @@ func PrepareCommand(p *PrepareCommandParams) (*exec.Cmd, error) {
 		return nil, err
 	}
 
-	sd := env.LocalPath(localdata.StorageParentDir, p.Component)
+	sd := filepath.Join(p.TiupHome, localdata.StorageParentDir, p.Component)
 	if err := os.MkdirAll(sd, 0755); err != nil {
 		return nil, err
 	}
 
-	teleMeta, _, err := telemetry.GetMeta(env)
+	teleMeta, _, err := telemetry.GetMeta2(p.TiupHome)
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +168,7 @@ func PrepareCommand(p *PrepareCommandParams) (*exec.Cmd, error) {
 	}
 
 	envs := []string{
-		fmt.Sprintf("%s=%s", localdata.EnvNameHome, profile.Root()),
+		fmt.Sprintf("%s=%s", localdata.EnvNameHome, p.TiupHome),
 		fmt.Sprintf("%s=%s", localdata.EnvNameUserInputVersion, p.Version.String()),
 		fmt.Sprintf("%s=%s", localdata.EnvNameTiUPVersion, version.NewTiUPVersion().SemVer()),
 		fmt.Sprintf("%s=%s", localdata.EnvNameComponentDataDir, sd),
@@ -258,13 +258,27 @@ func PrepareBinary2(tiupC *client.Client, mirror, component string, version util
 		}
 		binPath = tmp
 	} else {
-		v1repo, err := tiupC.GetRepository(mirror)
-		if err != nil {
-			return "", err
+		if mirror == "" {
+			mirror = tiupC.ReadAlias(component)
+			if mirror == "" {
+				return "", fmt.Errorf("must specific mirror name and component like tiup-mirrors.pingcap.com/playground, or add alias")
+			}
+		}
+
+		v1repo, _ := tiupC.GetRepository(mirror)
+		if v1repo == nil {
+			return "", fmt.Errorf("%s is unknown mirror, please add it with \"tiup mirror add\" first", mirror)
 		}
 		selectVer, err := v1repo.Local().GetComponentInstalledVersion(component, utils.Version(version))
 		if err != nil {
-			return "", err
+			if !strings.HasPrefix(err.Error(), "component not installed") {
+				return "", err
+			}
+			err = tiupC.Install(fmt.Sprintf("%s/%s", mirror, component))
+			if err != nil {
+				return "", err
+			}
+			selectVer, _ = v1repo.Local().GetComponentInstalledVersion(component, utils.Version(version))
 		}
 		binPath, err = v1repo.BinaryPath(v1repo.Local().ProfilePath(localdata.ComponentParentDir, mirror, component, selectVer.String()), component, selectVer.String())
 		if err != nil {

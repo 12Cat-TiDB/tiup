@@ -3,11 +3,13 @@ package client
 import (
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/fatih/color"
 	"github.com/pingcap/errors"
 	"github.com/pingcap/tiup/pkg/localdata"
 	"github.com/pingcap/tiup/pkg/repository"
@@ -21,7 +23,7 @@ type Client struct {
 	config   *localdata.TiUPConfig
 	// repo represents the components repository of TiUP, it can be a
 	// local file system or a HTTP URL
-	repositories map[string]*repository.V1Repository
+	repositories map[string]*repository.V1Repository // mirror name => v1repo
 }
 
 func NewTiUPClient(tiupHome string) (*Client, error) {
@@ -143,24 +145,45 @@ func (c *Client) Install(s string) error {
 	})
 
 	if mirror != "" {
+		v1repo, ok := c.repositories[mirror]
+		if !ok {
+			// automatically fetch root.json and add mirror
+			mirrorURL := "https://" + mirror
+			rootJSONPath := mirrorURL + "/root.json"
+			fmt.Println(color.YellowString("WARN: adding root certificate via internet: %s", rootJSONPath))
+			resp, err := http.Get(rootJSONPath)
+			if err != nil {
+				return err
+			}
+			defer resp.Body.Close()
+
+			err = c.AddMirror(localdata.SingleMirror{Name: mirror}, resp.Body)
+			if err != nil {
+				return err
+			}
+			v1repo = c.repositories[mirror]
+		}
+		if err = v1repo.UpdateComponents(v1specs); err == nil {
+			c.tryAddAlias(component, fmt.Sprintf("%s/%s", mirror, component))
+		}
+		return err
+	}
+
+	if mirror = c.ReadAlias(component); mirror != "" {
 		if v1repo, ok := c.repositories[mirror]; ok {
 			c.tryAddAlias(component, fmt.Sprintf("%s/%s", v1repo.Local().Name(), component))
 			return v1repo.UpdateComponents(v1specs)
 		}
 	}
 
-	for _, v1repo := range c.repositories {
+	for k, v1repo := range c.repositories {
 		err = v1repo.UpdateComponents(v1specs)
-		if err != nil {
-			// Ignore ErrUnknownComponent
-			if strings.Contains(err.Error(), repository.ErrUnknownComponent.Error()) {
-				continue
-			}
+		if err == nil || strings.Contains(err.Error(), repository.ErrUnknownComponent.Error()) {
+			c.tryAddAlias(component, fmt.Sprintf("%s/%s", k, component))
+			return nil
+		} else {
 			return err
 		}
-
-		c.tryAddAlias(component, fmt.Sprintf("%s/%s", v1repo.Local().Name(), component))
-		return nil
 	}
 	return fmt.Errorf("Component %s not found in all mirrors", s)
 }
@@ -209,10 +232,19 @@ func (c *Client) SaveConfig() error {
 }
 
 func (c *Client) tryAddAlias(component, mirrorComp string) {
+	if c.config.Aliases == nil {
+		c.config.Aliases = make(map[string]string)
+	}
 	_, exist := c.config.Aliases[component]
 	if !exist {
 		c.config.Aliases[component] = mirrorComp
 	}
+}
+
+func (c *Client) ReadAlias(component string) string {
+	mirrorAndComp := c.config.Aliases[component]
+	mirror, _, _, _ := c.ParseComponentVersion(mirrorAndComp)
+	return mirror
 }
 
 func (c *Client) initRepository(name, url string) (*repository.V1Repository, error) {

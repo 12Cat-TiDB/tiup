@@ -26,14 +26,12 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/google/uuid"
-	perrs "github.com/pingcap/errors"
 	"github.com/pingcap/tiup/pkg/client"
 	"github.com/pingcap/tiup/pkg/environment"
 	tiupexec "github.com/pingcap/tiup/pkg/exec"
 	"github.com/pingcap/tiup/pkg/localdata"
 	logprinter "github.com/pingcap/tiup/pkg/logger/printer"
 	"github.com/pingcap/tiup/pkg/repository"
-	"github.com/pingcap/tiup/pkg/repository/v1manifest"
 	"github.com/pingcap/tiup/pkg/telemetry"
 	"github.com/pingcap/tiup/pkg/version"
 	"github.com/spf13/cobra"
@@ -98,10 +96,12 @@ the latest stable version will be downloaded from the repository.`,
 			default:
 				e, err := environment.InitEnv(repoOpts, repository.MirrorOptions{})
 				if err != nil {
+					/* ignore error and use tiupclient instead
 					if errors.Is(perrs.Cause(err), v1manifest.ErrLoadManifest) {
 						log.Warnf("Please check for root manifest file, you may download one from the repository mirror, or try `tiup mirror set` to force reset it.")
 					}
 					return err
+					*/
 				}
 				environment.SetGlobalEnv(e)
 
@@ -180,6 +180,9 @@ the latest stable version will be downloaded from the repository.`,
 
 			teleCommand = fmt.Sprintf("%s %s", cmd.CommandPath(), componentSpec)
 			return tiupexec.RunComponent(tiupC, env, tag, componentSpec, binPath, args)
+		},
+		PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
+			return tiupC.SaveConfig()
 		},
 		SilenceUsage: true,
 		PersistentPostRunE: func(cmd *cobra.Command, args []string) error {
